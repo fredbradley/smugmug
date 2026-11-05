@@ -1,0 +1,76 @@
+{
+    "name": "fredbradley/smugmug",
+    "description": "Integrate with the SmugMug API v2 using SaloonPHP",
+    "license": "MIT",
+    "keywords": [
+        "SmugMug",
+        "photos",
+        "OAuth",
+        "REST API",
+        "Saloon",
+        "Laravel"
+    ],
+    "authors": [
+        {
+            "name": "Fred Bradley",
+            "email": "code@fredbradley.co.uk",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "illuminate/cache": "^12.39||^13.0",
+        "illuminate/collections": "^12.39||^13.0",
+        "illuminate/contracts": "^12.39||^13.0",
+        "illuminate/support": "^12.39||^13.0",
+        "saloonphp/cache-plugin": "^3.3",
+        "saloonphp/laravel-plugin": "^4.0||^5.0",
+        "saloonphp/pagination-plugin": "^2.0",
+        "saloonphp/saloon": "^4.4",
+        "spatie/laravel-package-tools": "^1.19"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.13",
+        "laravel/pint": "^1.20",
+        "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^10.0||^11.0",
+        "pestphp/pest": "^4.0||^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "FredBradley\\SmugMug\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FredBradley\\SmugMug\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "FredBradley\\SmugMug\\SmugMugServiceProvider"
+            ],
+            "aliases": {
+                "SmugMug": "FredBradley\\SmugMug\\Facades\\SmugMug"
+            }
+        }
+    },
+    "scripts": {
+        "post-install-cmd": "@hooks",
+        "post-update-cmd": "@hooks",
+        "hooks": "php -r \"is_dir('.git') && exec('git config core.hooksPath .githooks');\"",
+        "test": "pest",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "pint",
+        "format:check": "pint --test"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

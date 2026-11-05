@@ -1,0 +1,29 @@
+<?php
+
+namespace FredBradley\SmugMug\Requests\User;
+
+use FredBradley\SmugMug\Data\User\ProductNotification;
+use FredBradley\SmugMug\Query\Options;
+use FredBradley\SmugMug\Requests\ListRequest;
+use FredBradley\SmugMug\Support\Path;
+
+/**
+ * A user's product notifications: GET /api/v2/user/{nickname}!productnotifications.
+ */
+class GetUserProductNotificationsRequest extends ListRequest
+{
+    protected ?string $dto = ProductNotification::class;
+
+    /**
+     * @param  Options|array<string, mixed>  $options
+     */
+    public function __construct(public readonly string $nickname, Options|array $options = [])
+    {
+        $this->setOptions($options);
+    }
+
+    public function resolveEndpoint(): string
+    {
+        return '/api/v2/user/'.Path::segment($this->nickname).'!productnotifications';
+    }
+}

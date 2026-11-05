@@ -1,0 +1,68 @@
+name: Bump version
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  releaseJob:
+    name: Create Release
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A commit tagged by hand (a major or minor release) gets no automatic patch tag on top.
+      - name: Check for an existing tag
+        id: existing
+        run: |
+          if git describe --exact-match --tags "${{ github.event.workflow_run.head_sha }}" > /dev/null 2>&1; then
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Calculate version
+        id: tag_version
+        if: steps.existing.outputs.tagged == 'false'
+        uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit_sha: ${{ github.event.workflow_run.head_sha }}
+          default_bump: patch
+          tag_prefix: v
+          dry_run: true
+
+      - name: Bump version and push tag
+        if: steps.existing.outputs.tagged == 'false'
+        uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7.0.0
+        with:
+          github_token: ${{ secrets.PAT_GITHUB_TOKEN }}
+          commit_sha: ${{ github.event.workflow_run.head_sha }}
+          default_bump: patch
+          tag_prefix: v
+
+      - name: Create GitHub Release
+        if: steps.existing.outputs.tagged == 'false'
+        uses: fregante/release-with-changelog@779fd5e658f82e5b11b1c0a352a6838d3bd8f67f # v3
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          token: ${{ secrets.PAT_GITHUB_TOKEN }}
+          commit-template: '- {date}: {title} ← {hash}'
+          template: |
+            ### Changelog
+            {commits}
+
+            Compare: {range}
