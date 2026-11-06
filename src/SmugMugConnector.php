@@ -10,13 +10,17 @@ use FredBradley\SmugMug\Requests\AdhocRequest;
 use FredBradley\SmugMug\Requests\SmugMugRequest;
 use FredBradley\SmugMug\Resources\HasResources;
 use FredBradley\SmugMug\Support\RateLimit;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
 use InvalidArgumentException;
 use JsonSerializable;
 use LogicException;
 use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\UriInterface;
 use Saloon\Config;
 use Saloon\Contracts\Authenticator;
 use Saloon\Enums\Method;
+use Saloon\Enums\PipeOrder;
 use Saloon\Exceptions\Request\FatalRequestException;
 use Saloon\Exceptions\Request\RequestException;
 use Saloon\Http\Auth\QueryAuthenticator;
@@ -27,6 +31,7 @@ use Saloon\Http\Response;
 use Saloon\PaginationPlugin\Contracts\HasPagination;
 use Saloon\Traits\Plugins\HasTimeout;
 use Throwable;
+use WeakMap;
 
 /**
  * The connection to SmugMug for one application (its API key and secret) and, optionally, one user (their OAuth
@@ -44,7 +49,19 @@ class SmugMugConnector extends Connector implements HasPagination
 
     public const UPLOAD_HOST = 'upload.smugmug.com';
 
+    /**
+     * How many redirects in a row a request follows before the last one is returned as it is.
+     */
+    public const MAX_REDIRECTS = 5;
+
     protected float $connectTimeout;
+
+    /**
+     * The requests sent again after a redirect, with where each goes and how many redirects led there.
+     *
+     * @var WeakMap<Request, array{uri: string, hops: int}>
+     */
+    private WeakMap $redirects;
 
     protected float $requestTimeout;
 
@@ -61,6 +78,8 @@ class SmugMugConnector extends Connector implements HasPagination
         if ($this->hasToken() && ($apiSecret === null || $apiSecret === '' || $accessTokenSecret === null || $accessTokenSecret === '')) {
             throw new InvalidArgumentException('Signing requests with an access token needs the API secret and the access token secret too.');
         }
+
+        $this->redirects = new WeakMap;
 
         $this->connectTimeout = self::timeout(config('smugmug.timeouts.connect'), Config::$defaultConnectionTimeout);
         $this->requestTimeout = self::timeout(config('smugmug.timeouts.request'), Config::$defaultRequestTimeout);
@@ -180,6 +199,28 @@ class SmugMugConnector extends Connector implements HasPagination
         throw new LogicException('A SmugMugConnector cannot be serialised; resolve it from the SmugMug facade or config where it is used.');
     }
 
+    /**
+     * Redirects are followed here rather than by the HTTP client, which would send the same OAuth signature (and
+     * nonce) to the new URL; SmugMug refuses that with oauth_problem=nonce_used. SmugMug redirects often, such as
+     * /image/{key} to /image/{key}-0.
+     *
+     * @return array<string, mixed>
+     */
+    protected function defaultConfig(): array
+    {
+        return [
+            'allow_redirects' => false,
+        ];
+    }
+
+    /**
+     * Follows a redirect to SmugMug's API with a fresh signature for the new URL.
+     */
+    public function boot(PendingRequest $pendingRequest): void
+    {
+        $pendingRequest->middleware()->onResponse(fn (Response $response): ?Response => $this->followRedirect($response), 'smugmugRedirect', PipeOrder::FIRST);
+    }
+
     protected function defaultAuth(): Authenticator
     {
         if ($this->hasToken()) {
@@ -205,6 +246,12 @@ class SmugMugConnector extends Connector implements HasPagination
      */
     public function handlePsrRequest(RequestInterface $request, PendingRequest $pendingRequest): RequestInterface
     {
+        $redirect = $this->redirects[$pendingRequest->getRequest()] ?? null;
+
+        if ($redirect !== null) {
+            $request = $request->withUri(self::redirectedUri($request->getUri(), new Uri($redirect['uri'])));
+        }
+
         $uri = $request->getUri();
         $host = strtolower($uri->getHost());
 
@@ -311,6 +358,58 @@ class SmugMugConnector extends Connector implements HasPagination
     public function delete(string $uri, Options|array $options = []): Response
     {
         return $this->send(new AdhocRequest(Method::DELETE, $uri, $options));
+    }
+
+    /**
+     * The same request sent again to where a redirect points, when that is SmugMug's API: 301, 302, 307 and 308
+     * keep the method (and body), 303 is followed for a GET or HEAD only. Anything else is left as it is.
+     */
+    private function followRedirect(Response $response): ?Response
+    {
+        $status = $response->status();
+        $location = $response->header('Location');
+        $request = $response->getRequest();
+        $method = $request->getMethod();
+
+        if (! in_array($status, [301, 302, 303, 307, 308], true) || ! is_string($location) || $location === '') {
+            return null;
+        }
+
+        if ($status === 303 && ! in_array($method, [Method::GET, Method::HEAD], true)) {
+            return null;
+        }
+
+        $target = UriResolver::resolve($response->getPsrRequest()->getUri(), new Uri($location));
+        $hops = ($this->redirects[$request]['hops'] ?? 0) + 1;
+
+        if ($target->getScheme() !== 'https' || strtolower($target->getHost()) !== self::API_HOST || $hops > self::MAX_REDIRECTS) {
+            return null;
+        }
+
+        $next = clone $request;
+        $this->redirects[$next] = ['uri' => (string) $target, 'hops' => $hops];
+
+        return $this->send($next);
+    }
+
+    /**
+     * The URL a redirected request goes to: the redirect's path, with the original query and the redirect's own
+     * parameters on top.
+     */
+    private static function redirectedUri(UriInterface $original, Uri $target): UriInterface
+    {
+        $pairs = static fn (string $query): array => array_values(array_filter(explode('&', $query), fn (string $pair): bool => $pair !== ''));
+        $name = static fn (string $pair): string => urldecode(explode('=', $pair, 2)[0]);
+
+        $targetPairs = $pairs($target->getQuery());
+        $replaced = array_map($name, $targetPairs);
+        $kept = array_filter($pairs($original->getQuery()), fn (string $pair): bool => ! in_array($name($pair), $replaced, true));
+
+        return $original
+            ->withScheme($target->getScheme())
+            ->withHost($target->getHost())
+            ->withPath($target->getPath())
+            ->withQuery(implode('&', [...$kept, ...$targetPairs]));
     }
 
     /**

@@ -75,6 +75,67 @@ it('gives each request a new nonce', function () {
     expect($nonces)->toHaveCount(2)->and($nonces[0])->not->toBe($nonces[1]);
 });
 
+it('follows a redirect with a new signature for the new URL, keeping the query', function () {
+    $mockClient = FakeSmugMug::respondWith([
+        MockResponse::make('', 301, ['Location' => '/api/v2/example/K1-0']),
+        FakeSmugMug::object('Example', ['Name' => 'redirected']),
+    ]);
+
+    $result = FakeSmugMug::user()->send(new ExampleItemRequest('K1', ['_filter' => 'Name']))->dto();
+    [$first, $second] = FakeSmugMug::sent($mockClient, ExampleItemRequest::class);
+
+    expect($result->Name)->toBe('redirected')
+        ->and((string) $first->getUri())->toBe('https://api.smugmug.com/api/v2/example/K1?_filter=Name')
+        ->and((string) $second->getUri())->toBe('https://api.smugmug.com/api/v2/example/K1-0?_filter=Name')
+        ->and(FakeSmugMug::signatureIsValid($second))->toBeTrue()
+        ->and(FakeSmugMug::oauthParameters($second)['oauth_nonce'])->not->toBe(FakeSmugMug::oauthParameters($first)['oauth_nonce']);
+});
+
+it('follows a redirect with the API key alone, and lets the redirect\'s own parameters win', function () {
+    $mockClient = FakeSmugMug::respondWith([
+        MockResponse::make('', 302, ['Location' => 'https://api.smugmug.com/api/v2/example/K1-0?count=5']),
+        FakeSmugMug::object('Example', ['Name' => 'redirected']),
+    ]);
+
+    FakeSmugMug::connector()->send(new ExampleItemRequest('K1', ['count' => 10, 'start' => 1]));
+    $second = FakeSmugMug::sent($mockClient, ExampleItemRequest::class)[1];
+
+    expect((string) $second->getUri())->toBe('https://api.smugmug.com/api/v2/example/K1-0?start=1&APIKey=test-api-key&count=5');
+});
+
+it('keeps the method and body of a write when following a redirect', function () {
+    $mockClient = FakeSmugMug::respondWith([
+        MockResponse::make('', 307, ['Location' => '/api/v2/example!create-0']),
+        FakeSmugMug::object('Example', ['Name' => 'x']),
+    ]);
+
+    FakeSmugMug::user()->send(new ExampleCreateRequest(['Name' => 'x']));
+    $second = FakeSmugMug::sent($mockClient, ExampleCreateRequest::class)[1];
+
+    expect($second->getMethod())->toBe('POST')
+        ->and($second->getUri()->getPath())->toBe('/api/v2/example!create-0')
+        ->and(json_decode((string) $second->getBody(), true))->toBe(['Name' => 'x'])
+        ->and(FakeSmugMug::signatureIsValid($second))->toBeTrue();
+});
+
+it('does not follow a redirect away from SmugMug\'s API, a 303 after a write, or more than five in a row', function () {
+    $mockClient = FakeSmugMug::respondWith([MockResponse::make('', 301, ['Location' => 'https://example.com/api/v2/example/K1'])]);
+    expect(FakeSmugMug::user()->send(new ExampleItemRequest)->status())->toBe(301)
+        ->and(FakeSmugMug::sent($mockClient, ExampleItemRequest::class))->toHaveCount(1);
+
+    $mockClient = FakeSmugMug::respondWith([MockResponse::make('', 303, ['Location' => '/api/v2/example/K1'])]);
+    expect(FakeSmugMug::user()->send(new ExampleCreateRequest(['Name' => 'x']))->status())->toBe(303)
+        ->and(FakeSmugMug::sent($mockClient, ExampleCreateRequest::class))->toHaveCount(1);
+
+    $mockClient = FakeSmugMug::respondWith([ExampleItemRequest::class => MockResponse::make('', 301, ['Location' => '/api/v2/example/K1-0'])]);
+    expect(FakeSmugMug::user()->send(new ExampleItemRequest)->status())->toBe(301)
+        ->and(FakeSmugMug::sent($mockClient, ExampleItemRequest::class))->toHaveCount(1 + SmugMugConnector::MAX_REDIRECTS);
+});
+
+it('leaves redirects to the connector rather than the HTTP client', function () {
+    expect(FakeSmugMug::user()->config()->get('allow_redirects'))->toBeFalse();
+});
+
 it('acts as another user, or as nobody', function () {
     $connector = FakeSmugMug::connector()->withToken('other-token', 'other-secret');
 
