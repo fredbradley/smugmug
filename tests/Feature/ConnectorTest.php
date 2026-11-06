@@ -5,6 +5,8 @@ use FredBradley\SmugMug\Data\Album\Album;
 use FredBradley\SmugMug\Exceptions\NotFoundException;
 use FredBradley\SmugMug\Requests\AdhocBodyRequest;
 use FredBradley\SmugMug\Requests\AdhocRequest;
+use FredBradley\SmugMug\Requests\User\GetAuthUserRequest;
+use FredBradley\SmugMug\Requests\User\UpdateAuthUserRequest;
 use FredBradley\SmugMug\SmugMugConnector;
 use FredBradley\SmugMug\SmugMugPaginator;
 use FredBradley\SmugMug\Tests\Fixtures\ExampleCreateRequest;
@@ -80,6 +82,19 @@ it('acts as another user, or as nobody', function () {
         ->and($connector->withoutToken()->hasToken())->toBeFalse()
         ->and($connector->tokenFingerprint())->not->toBe(FakeSmugMug::user()->tokenFingerprint())
         ->and(FakeSmugMug::user()->tokenFingerprint())->toBe(FakeSmugMug::user()->tokenFingerprint());
+});
+
+it('refuses to ask who the user is without a token, rather than pass on SmugMug\'s 404', function () {
+    $mockClient = FakeSmugMug::respondWith([
+        GetAuthUserRequest::class => FakeSmugMug::object('User', ['NickName' => 'cmac']),
+        UpdateAuthUserRequest::class => FakeSmugMug::object('User', ['NickName' => 'cmac']),
+    ]);
+
+    expect(fn () => FakeSmugMug::connector()->users()->me())->toThrow(LogicException::class, 'needs an access token')
+        ->and(fn () => FakeSmugMug::connector()->users()->updateMe(['NickName' => 'x']))->toThrow(LogicException::class, 'needs an access token')
+        ->and($mockClient->getRecordedResponses())->toBe([])
+        ->and(FakeSmugMug::user()->users()->me()->NickName)->toBe('cmac')
+        ->and(FakeSmugMug::user()->users()->updateMe(['NickName' => 'x'])->NickName)->toBe('cmac');
 });
 
 it('refuses to be built without what it needs', function () {

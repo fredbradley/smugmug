@@ -10,6 +10,7 @@ use FredBradley\SmugMug\SmugMugConnector;
 use FredBradley\SmugMug\Support\Payload;
 use Illuminate\Support\Facades\Cache;
 use JsonException;
+use LogicException;
 use Saloon\CachePlugin\Contracts\Cacheable;
 use Saloon\CachePlugin\Contracts\Driver;
 use Saloon\CachePlugin\Drivers\LaravelCacheDriver;
@@ -126,6 +127,19 @@ abstract class SmugMugRequest extends Request implements Cacheable
                 $this->resolveCacheDriver()->delete(CacheKeyHelper::createHashed($pendingRequest, $this->cacheKey($pendingRequest)));
             }
         }, order: PipeOrder::LAST);
+    }
+
+    /**
+     * Refuse to send a request SmugMug only answers for a signed-in user, when the connector has no access token:
+     * without one SmugMug answers 404 Not Found, which says nothing about the real problem.
+     */
+    protected static function requireToken(PendingRequest $pendingRequest, string $what): void
+    {
+        $connector = $pendingRequest->getConnector();
+
+        if ($connector instanceof SmugMugConnector && ! $connector->hasToken()) {
+            throw new LogicException($what.' needs an access token: it is the user who signed the request, and without a token SmugMug answers 404 Not Found. Set SMUGMUG_ACCESS_TOKEN and SMUGMUG_ACCESS_TOKEN_SECRET (and SMUGMUG_API_SECRET), or use SmugMug::withToken($token, $secret).');
+        }
     }
 
     /**

@@ -60,8 +60,10 @@ SMUGMUG_API_KEY=your-api-key
 SMUGMUG_API_SECRET=your-api-secret
 ```
 
-That is enough to read public data. To act as one account (yours, for a site that shows or manages a single
-SmugMug account), add that account's access token. [Signing in](#signing-in) shows how to get one:
+That is enough to read public data, such as `SmugMug::users()->get('cmac')`. To act as one account (yours, for a
+site that shows or manages a single SmugMug account), add that account's access token. [Signing in](#signing-in) shows
+how to get one. Anything private needs it, and so does `SmugMug::users()->me()`: without a token it throws a
+`LogicException`, because SmugMug can only say who signed a request that was signed.
 
 ```dotenv
 SMUGMUG_ACCESS_TOKEN=the-access-token
@@ -201,7 +203,7 @@ response. Every resource, request and model is listed in [ENDPOINTS.md](ENDPOINT
 ### Users
 
 ```php
-$me = SmugMug::users()->me();                       // the user the token belongs to
+$me = SmugMug::users()->me();                       // the user the token belongs to (needs a token)
 $user = SmugMug::users()->get('cmac');
 $users = SmugMug::users()->many(['cmac', 'onethumb'])->get();
 $profile = SmugMug::users()->profile('cmac');       // UserProfile: BioText, Facebook, Instagram and so on

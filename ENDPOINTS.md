@@ -86,8 +86,8 @@ How to read the tables:
 | `delete($nickname)` | Close the authenticated user's account | true | Reason: why the account is being closed (query) |
 | `create($fields)` | Create a SmugMug account (for partner applications SmugMug has allowed to) | `User` or null | Email (required): the new account's email address<br>FirstName (required)<br>LastName (required)<br>NickName: the nickname (and so the site address) to use<br>Password (required)<br>PlanUri (required): the URI of the plan to sign up for<br>IntentToSell (required): yes, no, maybe or skipped<br>TimeZone<br>Ureferrer: a referral code |
 | `search()` | Search SmugMug's users | a `Listing` of `User` | q (required): the text to search for |
-| `me()` | The user the access token belongs to | `User` or null |  |
-| `updateMe($fields)` | Change the authenticated user's nickname | `User` or null | NickName: a new nickname |
+| `me()` | The user the access token belongs to. Needs an access token: without one it throws a `LogicException` | `User` or null |  |
+| `updateMe($fields)` | Change the authenticated user's nickname. Needs an access token | `User` or null | NickName: a new nickname |
 | `siteUser()` | The user whose site the request is made on (on a custom domain) | `User` or null |  |
 | `profile($nickname)` | A user's profile | `UserProfile` or null |  |
 | `updateProfile($nickname, $fields)` | Change a user's profile | `UserProfile` or null | BioText: the biography<br>BioImageUri: the URI of the image to use as the bio image<br>CoverImageUri: the URI of the image to use as the cover image<br>FirstName<br>LastName<br>DisplayName<br>Facebook, Twitter, Instagram, Blogger, FiveHundredPX, Flickr, LinkedIn, Pinterest, Tumblr, Vimeo, Wordpress, YouTube, Custom: links to the user's other sites |
