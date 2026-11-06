@@ -156,7 +156,7 @@ class NodeResource extends BaseResource
     }
 
     /**
-     * Every folder node above a node, nearest first: GET /api/v2/node/{nodeId}!parents.
+     * The node itself, then every folder node above it, up to the top folder (IsRoot): GET /api/v2/node/{nodeId}!parents.
      *
      * @param  Options|array<string, mixed>  $options
      * @return Listing<Node>

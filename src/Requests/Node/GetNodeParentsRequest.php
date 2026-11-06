@@ -8,7 +8,7 @@ use FredBradley\SmugMug\Requests\ListRequest;
 use FredBradley\SmugMug\Support\Path;
 
 /**
- * Every folder node above a node, nearest first: GET /api/v2/node/{nodeId}!parents.
+ * The node itself, then every folder node above it, up to the top folder (IsRoot): GET /api/v2/node/{nodeId}!parents.
  */
 class GetNodeParentsRequest extends ListRequest
 {

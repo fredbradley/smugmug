@@ -373,7 +373,7 @@ How to read the tables:
 | `children($nodeId)` | The folders, albums and pages in a folder node | a `Listing` of `Node` | Type: All, Folder Album Page, Folder, Album, Page or System Album<br>SortMethod: DateAdded, DateModified, Name or Organizer<br>SortDirection: Ascending or Descending |
 | `create($nodeId, $fields)` | Create a folder, album or page in a folder node | `Node` or null | Type (required): Album, Folder or Page<br>Name (required)<br>UrlName: the address part (made from the Name when left out)<br>Description, Keywords (a list)<br>Privacy: Public, Unlisted or Private<br>SecurityType, Password, PasswordHint<br>SmugSearchable, WorldSearchable<br>SortMethod, SortDirection<br>HighlightImageUri, CoverImageUri, ShowCoverImage, HideOwner<br>AlbumTemplateUri: an album template to create an album from<br>AutoRename: rename instead of failing when the UrlName is taken |
 | `parent($nodeId)` | The folder node a node is in | `Node` or null |  |
-| `parents($nodeId)` | Every folder node above a node, nearest first | a `Listing` of `Node` |  |
+| `parents($nodeId)` | The node itself, then every folder node above it, up to the top folder (IsRoot) | a `Listing` of `Node` |  |
 | `cover($nodeId)` | A node's cover image | `Image` or null |  |
 | `highlightImage($nodeId)` | The image that represents a node | `Image` or null |  |
 | `comments($nodeId)` | The comments on a node | a `Listing` of `Comment` |  |
@@ -438,7 +438,7 @@ How to read the tables:
 | `search($nickname, $path)` | Search the folders under a folder | a `Listing` of `Folder` | Text: the text to search for<br>SortMethod: Rank or LastUpdated<br>SortDirection: Ascending or Descending |
 | `highlightImage($nickname, $path)` | The image that represents a folder | `Image` or null | FolderID |
 | `parent($nickname, $path)` | The folder a folder is in | `Folder` or null | FolderID |
-| `parents($nickname, $path)` | Every folder above a folder | a `Listing` of `Folder` | FolderID |
+| `parents($nickname, $path)` | Every folder from the top folder down to the folder itself | a `Listing` of `Folder` | FolderID |
 | `size($nickname, $path)` | How much a folder holds | `Size` or null | FolderID<br>depth: 1 (this folder) or MAX (everything under it) |
 | `grants($nickname, $path)` | Who has been granted access to a folder | a `Listing` of `Grant` |  |
 | `grant($nickname, $path, $fields)` | Grant someone access to a folder | `Grant` or null | ContactUri: the contact to grant access to<br>Email: or an email address |

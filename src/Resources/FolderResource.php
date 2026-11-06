@@ -262,7 +262,7 @@ class FolderResource extends BaseResource
     }
 
     /**
-     * Every folder above a folder: GET /api/v2/folder/user/{nickname}{path*}!parents.
+     * Every folder from the top folder down to the folder itself: GET /api/v2/folder/user/{nickname}{path*}!parents.
      *
      *  - FolderID
      *
