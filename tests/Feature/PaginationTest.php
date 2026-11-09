@@ -58,13 +58,49 @@ it('stops at a page that repeats the last', function () {
     $mockClient->assertSentCount(2);
 });
 
-it('stops at an empty or short page, or once it has the total', function () {
+it('stops at an empty list, or once it has asked for every place up to the total', function () {
     FakeSmugMug::respondWith([ExampleListRequest::class => FakeSmugMug::objects('Example', [], 0)]);
     expect(FakeSmugMug::connector()->paginate(new ExampleListRequest)->collect()->all())->toBe([]);
 
     $mockClient = FakeSmugMug::respondWith([ExampleListRequest::class => pagedList(4)]);
     expect(FakeSmugMug::connector()->paginate(new ExampleListRequest, 2)->collect()->count())->toBe(4);
     $mockClient->assertSentCount(2);
+});
+
+it('carries on past short and empty pages while SmugMug says there is a next page, as it does for big albums', function () {
+    // 10 places, of which SmugMug leaves out 3, 4, 5, 6 and 9: the pages of 2 are [1, 2], [], [7, 8], [10].
+    $missing = [3, 4, 5, 6, 9];
+    $mockClient = FakeSmugMug::respondWith([ExampleListRequest::class => function (PendingRequest $request) use ($missing) {
+        $start = (int) $request->query()->get('start');
+        $count = (int) $request->query()->get('count');
+        $items = [];
+
+        for ($i = $start; $i < $start + $count && $i <= 10; $i++) {
+            if (! in_array($i, $missing, true)) {
+                $items[] = ['Name' => "item $i"];
+            }
+        }
+
+        $pages = ['Total' => 10, 'Start' => $start, 'Count' => count($items), 'RequestedCount' => $count];
+
+        if ($start + $count <= 10) {
+            $pages['NextPage'] = '/api/v2/example?start='.($start + $count).'&count='.$count;
+        }
+
+        return FakeSmugMug::envelope('Example', $items, 'Objects', $pages);
+    }]);
+
+    $names = FakeSmugMug::connector()->paginate(new ExampleListRequest, 2)->collect()->pluck('Name')->all();
+
+    expect($names)->toBe(['item 1', 'item 2', 'item 7', 'item 8', 'item 10']);
+    $mockClient->assertSentCount(5);
+});
+
+it('stops at an empty or short page when SmugMug gives no Pages', function () {
+    $mockClient = FakeSmugMug::respondWith([ExampleListRequest::class => FakeSmugMug::envelope('Example', [['Name' => 'a']], 'Objects')]);
+
+    expect(FakeSmugMug::connector()->paginate(new ExampleListRequest, 2)->collect()->all())->toHaveCount(1);
+    $mockClient->assertSentCount(1);
 });
 
 it('maps items to the model the Locator names when the request has none', function () {

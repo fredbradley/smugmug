@@ -17,13 +17,17 @@ use Saloon\PaginationPlugin\Paginator;
 
 /**
  * Pages through a list with SmugMug's start (from 1) and count parameters, stopping when Response.Pages has no
- * NextPage, when a page is empty or short, or once the items fetched reach Pages.Total.
+ * NextPage, or once the pages asked for reach Pages.Total. SmugMug can answer a page with fewer items than it was
+ * asked for (or none) and still have more after it, as in big albums, so a short page is only taken as the end when
+ * the response has no Pages to say otherwise.
  */
 class SmugMugPaginator extends Paginator
 {
     protected ?int $perPageLimit = 100;
 
     protected ?string $lastPageFingerprint = null;
+
+    protected bool $repeatedPage = false;
 
     protected ?Response $lastResponse = null;
 
@@ -107,7 +111,7 @@ class SmugMugPaginator extends Paginator
     {
         $items = $this->getPageItems($response, $response->getRequest());
 
-        if ($items === [] || ($this->perPageLimit !== null && count($items) < $this->perPageLimit)) {
+        if ($this->repeatedPage) {
             return true;
         }
 
@@ -117,16 +121,28 @@ class SmugMugPaginator extends Paginator
             return true;
         }
 
-        if ($pages === null || ! isset($pages['NextPage'])) {
+        if ($pages === null) {
+            return $items === [] || ($this->perPageLimit !== null && count($items) < $this->perPageLimit);
+        }
+
+        if (! isset($pages['NextPage'])) {
             return true;
         }
 
-        return isset($pages['Total']) && is_numeric($pages['Total']) && $this->totalResults >= (int) $pages['Total'];
+        if (! isset($pages['Total']) || ! is_numeric($pages['Total'])) {
+            return false;
+        }
+
+        // The last place this page asked for, counting the items SmugMug left out of it.
+        $start = (int) ($response->getPendingRequest()->query()->get('start') ?? 1);
+
+        return $start + $this->perPage() - 1 >= (int) $pages['Total'];
     }
 
     protected function onRewind(): void
     {
         $this->lastPageFingerprint = null;
+        $this->repeatedPage = false;
         $this->lastResponse = null;
         $this->lastItems = [];
     }
@@ -147,10 +163,12 @@ class SmugMugPaginator extends Paginator
 
             $items = Payload::rawItems($response);
 
-            // An endpoint that ignored start would answer the same page forever: a repeated page is the end.
+            // An endpoint that ignored start would answer the same page forever: a repeated page is the end. Two empty
+            // pages in a row are not a repeat, as SmugMug can skip a whole page's worth of items.
             $fingerprint = sha1((string) json_encode($items));
+            $this->repeatedPage = $items !== [] && $fingerprint === $this->lastPageFingerprint;
             $this->lastResponse = $response;
-            $this->lastItems = $fingerprint === $this->lastPageFingerprint ? [] : $items;
+            $this->lastItems = $this->repeatedPage ? [] : $items;
             $this->lastPageFingerprint = $fingerprint;
 
             return $this->lastItems;
